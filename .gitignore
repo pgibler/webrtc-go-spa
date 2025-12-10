@@ -1,0 +1,21 @@
+# Frontend build artifacts
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Go build outputs
+backend/webrtc-go-spa
+backend/webrtc-go-spa.exe
+backend/webrtc-go-spa.test
+backend/bin/
+backend/coverage.*
+*.out
+backend/.env
+.env
+
+# OS/editor noise
+.DS_Store
+*.log
+*.swp
+*.tmp
+*.bak
