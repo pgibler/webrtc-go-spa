@@ -9,7 +9,7 @@ A minimal WebRTC demo built with a Go signaling server and a SolidJS single-page
 
 ## Prerequisites
 - Go 1.21+ (tested with recent Go releases)
-- Node 18+ (or Bun) for the frontend build
+- Bun for the frontend build
 - Redis running and reachable (defaults to `localhost:6379`)
 
 ## Quick Start

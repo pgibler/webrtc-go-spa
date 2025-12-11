@@ -20,3 +20,6 @@ backend/.env
 *.swp
 *.tmp
 *.bak
+
+# VSCode
+.vscode
