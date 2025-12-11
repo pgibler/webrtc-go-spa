@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 
 type StateMessage = {
   type: "welcome" | "peer-joined" | "peer-left" | "broadcast-state";
@@ -31,13 +31,18 @@ const wsURL = () => {
 const VideoTile = (props: { label: string; stream: MediaStream; muted?: boolean }) => {
   let videoRef: HTMLVideoElement | undefined;
 
-  const assignStream = () => {
-    if (videoRef && videoRef.srcObject !== props.stream) {
-      videoRef.srcObject = props.stream;
+  // Bind the stream once the ref is set and whenever the stream changes.
+  createEffect(() => {
+    if (!videoRef) return;
+    const stream = props.stream;
+    if (!(stream instanceof MediaStream)) {
+      console.warn("VideoTile: stream is not a MediaStream", stream);
+      return;
     }
-  };
-
-  assignStream();
+    if (videoRef.srcObject !== stream) {
+      videoRef.srcObject = stream;
+    }
+  });
 
   return (
     <div class="video-tile">
@@ -100,6 +105,7 @@ export default function App() {
     stream.getTracks().forEach((track) => {
       if (!existing.includes(track.id)) {
         pc.addTrack(track, stream);
+        console.log("ensureLocalTracks: added track", { kind: track.kind, id: track.id });
       }
     });
   };
@@ -119,6 +125,11 @@ export default function App() {
     pc.ontrack = (event) => {
       const [stream] = event.streams;
       if (stream) {
+        console.log("ontrack: received stream", {
+          from: id,
+          streamId: stream.id,
+          tracks: stream.getTracks().map((t) => t.kind)
+        });
         setRemoteStreams((prev) => {
           const next = new Map(prev);
           next.set(id, stream);
@@ -129,7 +140,8 @@ export default function App() {
 
     pc.onconnectionstatechange = () => {
       const state = pc?.connectionState || "";
-      if (["failed", "disconnected"].includes(state)) {
+      console.log("connectionstatechange", { peer: id, state });
+      if (["failed", "closed", "disconnected"].includes(state)) {
         removePeer(id);
       }
     };
@@ -177,6 +189,10 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
+      });
+      console.log("startBroadcast: acquired local stream", {
+        id: stream.id,
+        tracks: stream.getTracks().map((t) => `${t.kind}:${t.id}`)
       });
       setLocalStream(stream);
       setBroadcastEnabled(true);
@@ -235,11 +251,13 @@ export default function App() {
     socket = new WebSocket(wsURL());
 
     socket.onopen = () => {
+      console.log("ws: open", { url: wsURL() });
       setConnected(true);
       setStatus("Connected");
     };
 
     socket.onclose = () => {
+      console.log("ws: close");
       setConnected(false);
       setStatus("Disconnected from signaling server");
     };

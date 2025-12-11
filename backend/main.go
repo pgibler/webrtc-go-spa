@@ -177,6 +177,7 @@ func (h *hub) handleWebsocket() http.Handler {
 			conn: conn,
 			send: make(chan []byte, 32),
 		}
+		log.Printf("ws: new connection %s from %s", c.id, r.RemoteAddr)
 
 		if err := h.register(r.Context(), c); err != nil {
 			log.Printf("register error: %v", err)
@@ -199,6 +200,7 @@ func (h *hub) register(ctx context.Context, c *client) error {
 	}
 
 	peers, broadcasting := h.currentState(ctx)
+	log.Printf("ws: registered %s (peers=%d broadcasting=%d)", c.id, len(peers), len(broadcasting))
 
 	welcome := statePayload{
 		Type:         "welcome",
@@ -230,6 +232,7 @@ func (h *hub) unregister(c *client) {
 	h.redis.SRem(ctx, broadcastingKey, c.id)
 
 	peers, broadcasting := h.currentState(ctx)
+	log.Printf("ws: unregistered %s (peers=%d broadcasting=%d)", c.id, len(peers), len(broadcasting))
 
 	leave := statePayload{
 		Type:         "peer-left",
@@ -275,6 +278,7 @@ func (h *hub) currentState(ctx context.Context) ([]string, []string) {
 }
 
 func (h *hub) handleInbound(c *client, msg inboundMessage) {
+	log.Printf("ws: inbound type=%s from=%s to=%s enabled=%v", msg.Type, c.id, msg.To, msg.Enabled)
 	switch msg.Type {
 	case "signal":
 		if msg.To == "" || len(msg.Data) == 0 {
@@ -296,6 +300,7 @@ func (h *hub) forwardSignal(from, to string, payload json.RawMessage) {
 	target := h.clients[to]
 	h.mu.RUnlock()
 	if target == nil {
+		log.Printf("ws: forward signal target missing %s -> %s", from, to)
 		return
 	}
 
@@ -319,6 +324,7 @@ func (h *hub) updateBroadcast(id string, enabled bool) {
 	if err != nil {
 		log.Printf("redis update broadcast: %v", err)
 	}
+	log.Printf("ws: broadcast state id=%s enabled=%v", id, enabled)
 
 	peers, broadcasting := h.currentState(ctx)
 	state := statePayload{
