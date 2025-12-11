@@ -41,6 +41,10 @@ const VideoTile = (props: { label: string; stream: MediaStream; muted?: boolean 
     }
     if (videoRef.srcObject !== stream) {
       videoRef.srcObject = stream;
+      // Some browsers need an explicit play() call after srcObject assignment.
+      void videoRef.play().catch((err) => {
+        console.warn("VideoTile: play() failed", err);
+      });
     }
   });
 
@@ -125,6 +129,10 @@ export default function App() {
     pc.ontrack = (event) => {
       const [stream] = event.streams;
       if (stream) {
+        if (remoteStreams().has(id)) {
+          // Already attached a stream for this peer; skip duplicate audio/video events.
+          return;
+        }
         console.log("ontrack: received stream", {
           from: id,
           streamId: stream.id,
@@ -337,11 +345,11 @@ export default function App() {
         <h3>Live Streams</h3>
         <div class="videos">
           <Show when={localStream()}>
-            {(stream) => <VideoTile label="You" stream={stream} muted />}
+            {(stream) => <VideoTile label="You" stream={stream()} muted />}
           </Show>
           <For each={peerEntries()}>
             {([id, stream]) => (
-              <VideoTile label={id === peerId() ? "You" : id} stream={stream} muted={id === peerId()} />
+              <VideoTile label={id === peerId() ? "You" : id} stream={stream} muted />
             )}
           </For>
           <Show when={!localStream() && remoteStreams().size === 0}>
