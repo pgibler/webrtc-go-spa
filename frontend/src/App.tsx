@@ -358,11 +358,6 @@ export default function App() {
           <button onClick={() => (broadcastEnabled() ? stopBroadcast() : void startBroadcast())}>
             {broadcastEnabled() ? "Stop broadcasting" : "Start broadcasting"}
           </button>
-          <Show when={localStream()}>
-            <button class="secondary" onClick={stopBroadcast}>
-              Disable broadcast
-            </button>
-          </Show>
         </div>
       </div>
 

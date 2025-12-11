@@ -81,6 +81,7 @@ func main() {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("redis ping failed: %v", err)
 	}
+	resetPresence(ctx, rdb)
 
 	h := &hub{
 		clients: make(map[string]*client),
@@ -161,6 +162,14 @@ func loadEnvFile(path string) error {
 		}
 	}
 	return scanner.Err()
+}
+
+func resetPresence(ctx context.Context, rdb *redis.Client) {
+	if _, err := rdb.Del(ctx, peerSetKey, broadcastingKey).Result(); err != nil {
+		log.Printf("redis reset presence: %v", err)
+		return
+	}
+	log.Printf("redis presence cleared")
 }
 
 func (h *hub) handleWebsocket() http.Handler {
