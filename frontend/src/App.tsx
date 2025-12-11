@@ -73,6 +73,11 @@ export default function App() {
     setBroadcasting(live);
   };
 
+  const prunePeerLists = (id: string) => {
+    setPeers((prev) => prev.filter((p) => p !== id));
+    setBroadcasting((prev) => prev.filter((p) => p !== id));
+  };
+
   const removePeer = (id: string) => {
     const pc = connections.get(id);
     if (pc) {
@@ -84,6 +89,8 @@ export default function App() {
       next.delete(id);
       return next;
     });
+
+    prunePeerLists(id);
   };
 
   const ensureLocalTracks = (pc: RTCPeerConnection) => {
@@ -121,7 +128,8 @@ export default function App() {
     };
 
     pc.onconnectionstatechange = () => {
-      if (["failed", "closed", "disconnected"].includes(pc?.connectionState || "")) {
+      const state = pc?.connectionState || "";
+      if (["failed", "disconnected"].includes(state)) {
         removePeer(id);
       }
     };
