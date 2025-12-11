@@ -1,0 +1,27 @@
+# Sample coturn configuration for WebRTC relay
+#
+# Copy this file to `coturn/turnserver.conf` and adjust values.
+
+listening-port=3478
+#tls-listening-port=5349
+
+# Bind to specific interfaces if needed (public IP recommended).
+#listening-ip=0.0.0.0
+#external-ip=PUBLIC_IP/LOCAL_IP
+
+realm=webrtc-go-spa
+fingerprint
+lt-cred-mech
+
+# Static credentials (keep in sync with TURN_USERNAME / TURN_PASSWORD envs).
+user=demo:demo123
+
+# Uncomment to enable verbose logging for troubleshooting.
+#verbose
+
+# Uncomment to allow newer ALPN for browsers using TURN over TLS.
+#no-udp
+#no-tcp
+#no-tlsv1
+#no-tlsv1_1
+#cipher-list=ALL
