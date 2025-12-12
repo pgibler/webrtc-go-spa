@@ -39,7 +39,7 @@ Assumptions (keep consistent when comparing):
   - DO/Vultr DIY: ~$1.2k/yr instead of ~$12k  
   - Hetzner/OVH DIY: ~$420/yr instead of ~$4.2k
 - Capacity planning: size TURN nodes for peak relay traffic, not total sessions. If 10% relay at 10k users, peak throughput target is ~1–2 Gbps, not 10–20 Gbps.
-- Fallback strategy: keep `ICE_MODE` or equivalent to force TURN-only during tests to validate relay path; return to mixed mode for production efficiency.
+- Fallback strategy: keep `ICE_MODE` or equivalent to force TURN-only during tests to validate relay path or `stun-only` to validate host/STUN paths without relay; return to the default `stun-turn` (both) for production efficiency.
 
 ## 1-to-Many Broadcasting Cost Estimates
 - Assumptions: one broadcaster sends ~2 Mbps (supports 1080p for many scenes, some 720p for higher motion); audience receives ~2 Mbps each; TURN counts ingress+egress. Per-hour data ≈ 0.9 GB × (viewers + 1). Usage: 10 broadcast hours/month (same cadence as above).

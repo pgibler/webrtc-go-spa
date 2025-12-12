@@ -14,7 +14,7 @@ import (
 store := signaling.NewRedisPresence(redisClient, "webrtc")
 hub := signaling.NewHub(store, signaling.HubOptions{
   ICEServers: []signaling.ICEServer{ /* ... */ },
-  ICEMode:    "turn-only", // or ""
+  ICEMode:    "stun-turn", // default; also supports "turn-only" or "stun-only"
 })
 
 http.Handle("/ws", hub.HTTPHandler())

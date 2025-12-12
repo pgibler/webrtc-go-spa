@@ -40,7 +40,7 @@ Environment variables (optional):
 - `STUN_URLS` - Comma-separated STUN URLs (default `stun:stun.l.google.com:19302`)
 - `TURN_URLS` - Comma-separated TURN URLs (e.g., `turn:TURN_HOST:3478?transport=udp,turn:TURN_HOST:3478?transport=tcp`)
 - `TURN_USERNAME` / `TURN_PASSWORD` - Credentials for TURN servers (if required)
-- `ICE_MODE` - Optional; set to `turn-only` to drop STUN and force relay for testing fallback. Default is mixed STUN+TURN with STUN first.
+- `ICE_MODE` - Optional; `stun-turn` (default) keeps both STUN+TURN, `turn-only` drops STUN and forces relay, `stun-only` skips TURN.
 
 `.env` files are loaded from the project root, `backend/.env`, or `../.env`.
 Copy `.env.example` to `.env` and adjust TURN host/credentials to match your coturn config.

@@ -68,6 +68,9 @@ func loadConfig() config {
 	redisAddr := getenv("REDIS_ADDR", "localhost:6379")
 	staticDir := getenv("STATIC_DIR", defaultStaticPath)
 	iceMode := strings.TrimSpace(os.Getenv("ICE_MODE"))
+	if iceMode == "" {
+		iceMode = "stun-turn"
+	}
 	return config{
 		Addr:       addr,
 		RedisAddr:  redisAddr,
@@ -108,6 +111,7 @@ func loadICEServers(iceMode string) []signaling.ICEServer {
 
 	var servers []signaling.ICEServer
 	turnOnly := strings.EqualFold(iceMode, "turn-only")
+	stunOnly := strings.EqualFold(iceMode, "stun-only")
 
 	if !turnOnly {
 		if stunEnv != "" {
@@ -120,17 +124,19 @@ func loadICEServers(iceMode string) []signaling.ICEServer {
 		}
 	}
 
-	if turnEnv != "" {
-		turnURLs := splitAndClean(turnEnv)
-		if len(turnURLs) > 0 {
-			servers = append(servers, signaling.ICEServer{
-				URLs:       turnURLs,
-				Username:   turnUsername,
-				Credential: turnPassword,
-			})
+	if !stunOnly {
+		if turnEnv != "" {
+			turnURLs := splitAndClean(turnEnv)
+			if len(turnURLs) > 0 {
+				servers = append(servers, signaling.ICEServer{
+					URLs:       turnURLs,
+					Username:   turnUsername,
+					Credential: turnPassword,
+				})
+			}
+		} else if !turnOnly {
+			log.Printf("TURN not configured; set TURN_URLS and credentials for relay fallback")
 		}
-	} else {
-		log.Printf("TURN not configured; set TURN_URLS and credentials for relay fallback")
 	}
 
 	if turnOnly && len(servers) == 0 {

@@ -50,8 +50,10 @@ In your backend `.env` (or `backend/.env`), set:
 TURN_URLS=turn:<turn-ip>:3478?transport=udp,turn:<turn-ip>:3478?transport=tcp
 TURN_USERNAME=demo
 TURN_PASSWORD=demo123
-# Optional for testing relay-only:
+# Optional ICE modes (default is stun-turn for STUN+TURN):
 #ICE_MODE=turn-only
+#ICE_MODE=stun-only
+#ICE_MODE=stun-turn
 # If TLS enabled:
 #TURN_URLS=turn:<turn-ip>:3478?transport=udp,turn:<turn-ip>:3478?transport=tcp,turns:<turn-ip>:5349?transport=tcp
 ```
@@ -59,7 +61,8 @@ Restart the Go backend and hit `/debug/ice` to confirm the TURN URLs and mode.
 
 ## 7) Test WebRTC
 - Open the app in two browsers (ideally different networks), set `ICE_MODE=turn-only` temporarily, and confirm `relay` candidates appear and calls connect.
-- Remove `ICE_MODE` to return to STUN-first for normal use.
+- For STUN-only checks (no TURN fallback), set `ICE_MODE=stun-only` and verify only host/STUN candidates show up.
+- Use `ICE_MODE=stun-turn` or remove the env var to return to STUN+TURN for normal use.
 
 ## 8) Ops Notes
 - Keep TURN creds in sync with `user=` in `turnserver.conf` and app env.
