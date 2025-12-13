@@ -90,7 +90,7 @@ export default function App() {
           </Show>
           <For each={peerEntries()}>
             {([id, stream]) => (
-              <VideoTile label={id === peerId() ? "You" : id} stream={stream} muted />
+              <VideoTile label={id === peerId() ? "You" : id} stream={stream} muted={id === peerId()} />
             )}
           </For>
           <Show when={!localStream() && remoteStreams().size === 0}>
