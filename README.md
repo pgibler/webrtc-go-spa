@@ -37,6 +37,7 @@ Environment variables (optional):
 - `ADDR` - HTTP listen address (default `:8080`)
 - `REDIS_ADDR` - Redis address (default `localhost:6379`)
 - `STATIC_DIR` - Path to the frontend `dist/` (default `../frontend/dist`)
+- `WS_PUBLIC_URL` - Optional; explicit WebSocket URL to advertise to clients (defaults to request host/proto and `/ws`)
 - `STUN_URLS` - Comma-separated STUN URLs (default `stun:stun.l.google.com:19302`)
 - `TURN_URLS` - Comma-separated TURN URLs (e.g., `turn:TURN_HOST:3478?transport=udp,turn:TURN_HOST:3478?transport=tcp`)
 - `TURN_USERNAME` / `TURN_PASSWORD` - Credentials for TURN servers (if required)
@@ -45,9 +46,10 @@ Environment variables (optional):
 `.env` files are loaded from the project root, `backend/.env`, or `../.env`.
 Copy `.env.example` to `.env` and adjust TURN host/credentials to match your coturn config.
 Debug ICE config at runtime with `curl http://localhost:8080/debug/ice` (shows servers and mode).
+Client settings (WebSocket URL, ICE mode/servers) are available at `GET /api/settings`; the WS URL defaults to the incoming request host unless `WS_PUBLIC_URL` is set.
 
 ## Development
-- Frontend: `npm run dev -- --host` from `frontend/` for hot reload; update `VITE_WS_URL` if the backend is on a non-default host/port.
+- Frontend: `npm run dev -- --host` from `frontend/` for hot reload; the app reads the signaling URL from `/api/settings` (set `WS_PUBLIC_URL` on the backend if the public host differs).
 - Backend: `go run main.go` from `backend/`. The server resets Redis presence sets on startup to avoid stale peer lists after restarts.
 
 ## TURN (coturn)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -46,6 +47,7 @@ func main() {
 	})
 
 	http.Handle("/ws", hub.HTTPHandler())
+	http.Handle("/api/settings", settingsHandler(cfg))
 	http.Handle("/debug/ice", debugICE(cfg))
 	http.Handle("/", spaHandler(cfg.StaticPath))
 
@@ -56,11 +58,12 @@ func main() {
 }
 
 type config struct {
-	Addr       string
-	RedisAddr  string
-	StaticPath string
-	ICEServers []signaling.ICEServer
-	ICEMode    string
+	Addr        string
+	RedisAddr   string
+	StaticPath  string
+	ICEServers  []signaling.ICEServer
+	ICEMode     string
+	PublicWSURL string
 }
 
 func loadConfig() config {
@@ -71,12 +74,14 @@ func loadConfig() config {
 	if iceMode == "" {
 		iceMode = "stun-turn"
 	}
+	publicWS := strings.TrimSpace(os.Getenv("WS_PUBLIC_URL"))
 	return config{
-		Addr:       addr,
-		RedisAddr:  redisAddr,
-		StaticPath: staticDir,
-		ICEServers: loadICEServers(iceMode),
-		ICEMode:    iceMode,
+		Addr:        addr,
+		RedisAddr:   redisAddr,
+		StaticPath:  staticDir,
+		ICEServers:  loadICEServers(iceMode),
+		ICEMode:     iceMode,
+		PublicWSURL: publicWS,
 	}
 }
 
@@ -157,8 +162,8 @@ func logConfig(cfg config) {
 		}
 	}
 
-	log.Printf("config: addr=%s static_dir=%s redis_addr=%s ice_mode=%s ice_servers=%d turn_configured=%v",
-		cfg.Addr, cfg.StaticPath, cfg.RedisAddr, cfg.ICEMode, len(cfg.ICEServers), turnConfigured)
+	log.Printf("config: addr=%s static_dir=%s redis_addr=%s ice_mode=%s ice_servers=%d turn_configured=%v ws_public_url=%s",
+		cfg.Addr, cfg.StaticPath, cfg.RedisAddr, cfg.ICEMode, len(cfg.ICEServers), turnConfigured, cfg.PublicWSURL)
 }
 
 func splitAndClean(csv string) []string {
@@ -231,4 +236,37 @@ func debugICE(cfg config) http.Handler {
 		}
 		_ = json.NewEncoder(w).Encode(payload)
 	})
+}
+
+func settingsHandler(cfg config) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wsURL := resolveWSURL(cfg, r)
+		w.Header().Set("Content-Type", "application/json")
+		payload := map[string]interface{}{
+			"wsURL":      wsURL,
+			"iceMode":    cfg.ICEMode,
+			"iceServers": cfg.ICEServers,
+		}
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			log.Printf("settings encode error: %v", err)
+		}
+	})
+}
+
+func resolveWSURL(cfg config, r *http.Request) string {
+	if cfg.PublicWSURL != "" {
+		return cfg.PublicWSURL
+	}
+
+	proto := "ws"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		proto = "wss"
+	}
+
+	host := r.Host
+	if host == "" {
+		host = "localhost:8080"
+	}
+
+	return fmt.Sprintf("%s://%s/ws", proto, host)
 }

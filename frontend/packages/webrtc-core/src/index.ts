@@ -42,10 +42,40 @@ export type WebRTCClientOptions = {
 
 const defaultIceServers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+type ClientSettings = {
+  wsURL?: string;
+  iceMode?: string;
+  iceServers?: RTCIceServer[];
+};
+
+let settingsCache: ClientSettings | null = null;
+let settingsPromise: Promise<ClientSettings | null> | null = null;
+
+const fetchSettings = async (): Promise<ClientSettings | null> => {
+  if (settingsCache) return settingsCache;
+  if (settingsPromise) return settingsPromise;
+
+  settingsPromise = (async () => {
+    if (typeof window === "undefined" || typeof fetch === "undefined") return null;
+    try {
+      const res = await fetch("/api/settings", { headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const data = (await res.json()) as ClientSettings;
+      settingsCache = data;
+      return data;
+    } catch {
+      return null;
+    } finally {
+      settingsPromise = null;
+    }
+  })();
+
+  return settingsPromise;
+};
+
 const defaultWsURL = () => {
+  if (settingsCache?.wsURL) return settingsCache.wsURL;
   if (typeof window === "undefined") return "";
-  const env = (import.meta as any).env?.VITE_WS_URL as string | undefined;
-  if (env) return env;
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.host}/ws`;
 };
@@ -74,9 +104,10 @@ export class WebRTCClient {
   };
 
   constructor(opts: WebRTCClientOptions = {}) {
-    this.wsURL = opts.wsURL || defaultWsURL();
+    this.wsURL = opts.wsURL || "";
     this.iceServers = opts.iceServers || defaultIceServers;
     this.socketFactory = opts.socketFactory || ((url: string) => new WebSocket(url));
+    void fetchSettings();
   }
 
   on<K extends EventKey>(event: K, handler: Handler<K>) {
@@ -104,35 +135,39 @@ export class WebRTCClient {
   connect() {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
     this.emit("status", "Connecting to signaling server...");
-    const socket = this.socketFactory(this.wsURL);
-    this.socket = socket;
 
-    socket.onopen = () => {
-      console.info("[webrtc] ws open", { url: this.wsURL });
-      this.emit("connected", undefined);
-      this.emit("status", "Connected");
-    };
-    socket.onclose = (ev) => {
-      console.info("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
-      this.emit("disconnected", undefined);
-      this.emit("status", "Disconnected from signaling server");
-    };
-    socket.onerror = (err) => {
-      console.error("[webrtc] ws error", err);
-      this.emit("error", new Error("WebSocket error"));
-    };
-    socket.onmessage = (event) => {
-      try {
-        const message: IncomingMessage = JSON.parse(event.data);
-        if (message.type === "signal") {
-          void this.handleSignal(message as SignalMessage);
-        } else {
-          this.handleState(message as StateMessage);
+    void (async () => {
+      const resolvedURL = await this.resolveWsURL();
+      const socket = this.socketFactory(resolvedURL);
+      this.socket = socket;
+
+      socket.onopen = () => {
+        console.info("[webrtc] ws open", { url: resolvedURL });
+        this.emit("connected", undefined);
+        this.emit("status", "Connected");
+      };
+      socket.onclose = (ev) => {
+        console.info("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+        this.emit("disconnected", undefined);
+        this.emit("status", "Disconnected from signaling server");
+      };
+      socket.onerror = (err) => {
+        console.error("[webrtc] ws error", err);
+        this.emit("error", new Error("WebSocket error"));
+      };
+      socket.onmessage = (event) => {
+        try {
+          const message: IncomingMessage = JSON.parse(event.data);
+          if (message.type === "signal") {
+            void this.handleSignal(message as SignalMessage);
+          } else {
+            this.handleState(message as StateMessage);
+          }
+        } catch (err) {
+          this.emit("error", err as Error);
         }
-      } catch (err) {
-        this.emit("error", err as Error);
-      }
-    };
+      };
+    })();
   }
 
   disconnect() {
@@ -194,6 +229,18 @@ export class WebRTCClient {
         pc.addTrack(track, stream);
       }
     });
+  }
+
+  private async resolveWsURL(): Promise<string> {
+    if (this.wsURL) return this.wsURL;
+    const settings = await fetchSettings();
+    if (settings?.wsURL) {
+      this.wsURL = settings.wsURL;
+      return this.wsURL;
+    }
+    const fallback = defaultWsURL();
+    this.wsURL = fallback;
+    return fallback;
   }
 
   private getOrCreateConnection(id: string) {
