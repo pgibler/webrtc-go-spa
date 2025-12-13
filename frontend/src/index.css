@@ -39,6 +39,13 @@ body {
   gap: 20px;
 }
 
+.page.landing {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (min-width: 960px) {
   .page {
     grid-template-columns: minmax(340px, 400px) 1fr;
@@ -70,6 +77,40 @@ body {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+.join-panel {
+  max-width: 540px;
+  margin: 0 auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.join-panel h1 {
+  margin: 2px 0 6px;
+  font-size: clamp(24px, 3vw, 30px);
+}
+
+.eyebrow {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6e6e73;
+  font-weight: 700;
+}
+
+.lede {
+  margin: 0;
+  color: #2d2d2e;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.hint {
+  font-size: 13px;
+  color: #6e6e73;
 }
 
 .header {

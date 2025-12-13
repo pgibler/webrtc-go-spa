@@ -42,6 +42,23 @@ export type WebRTCClientOptions = {
 
 const defaultIceServers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+const loggingEnabled =
+  typeof import.meta !== "undefined" && typeof (import.meta as any).env !== "undefined"
+    ? Boolean((import.meta as any).env.VITE_WEBRTC_LOGGING)
+    : false;
+
+const log = (...args: unknown[]) => {
+  if (loggingEnabled) {
+    console.info(...args);
+  }
+};
+
+const logError = (...args: unknown[]) => {
+  if (loggingEnabled) {
+    console.error(...args);
+  }
+};
+
 type ClientSettings = {
   wsURL?: string;
   iceMode?: string;
@@ -142,17 +159,17 @@ export class WebRTCClient {
       this.socket = socket;
 
       socket.onopen = () => {
-        console.info("[webrtc] ws open", { url: resolvedURL });
+        log("[webrtc] ws open", { url: resolvedURL });
         this.emit("connected", undefined);
         this.emit("status", "Connected");
       };
       socket.onclose = (ev) => {
-        console.info("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+        log("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
         this.emit("disconnected", undefined);
         this.emit("status", "Disconnected from signaling server");
       };
       socket.onerror = (err) => {
-        console.error("[webrtc] ws error", err);
+        logError("[webrtc] ws error", err);
         this.emit("error", new Error("WebSocket error"));
       };
       socket.onmessage = (event) => {
@@ -183,7 +200,12 @@ export class WebRTCClient {
   }
 
   async startBroadcast(constraints: MediaStreamConstraints = { video: true, audio: true }) {
+    log("[webrtc] startBroadcast: requesting media", constraints);
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    log(
+      "[webrtc] startBroadcast: obtained media",
+      stream.getTracks().map((t) => ({ id: t.id, kind: t.kind, enabled: t.enabled }))
+    );
     this.localStream = stream;
     this.broadcastEnabled = true;
     this.send({ type: "broadcast", enabled: true });
@@ -216,6 +238,8 @@ export class WebRTCClient {
 
   private send(payload: any) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      // Helpful debug hook for signaling payloads.
+      log("[webrtc] send", payload);
       this.socket.send(JSON.stringify(payload));
     }
   }
@@ -226,6 +250,7 @@ export class WebRTCClient {
     const existing = pc.getSenders().map((s) => s.track?.id);
     stream.getTracks().forEach((track) => {
       if (!existing.includes(track.id)) {
+        log("[webrtc] adding local track to pc", { id: track.id, kind: track.kind, pc: this.peerId });
         pc.addTrack(track, stream);
       }
     });
@@ -248,18 +273,34 @@ export class WebRTCClient {
     if (pc) return pc;
 
     pc = new RTCPeerConnection({ iceServers: this.iceServers });
+    log("[webrtc] created RTCPeerConnection", { id });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        log("[webrtc] icecandidate", { id, candidate: event.candidate.type, sdpMid: event.candidate.sdpMid });
         this.send({ type: "signal", to: id, data: event.candidate });
       }
     };
 
     pc.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) {
-        if (this.remoteStreams.has(id)) {
-          return;
+      const [incoming] = event.streams;
+      log("[webrtc] ontrack", {
+        from: id,
+        streams: event.streams.map((s) => s.id),
+        trackId: event.track.id,
+        trackKind: event.track.kind,
+        trackReadyState: event.track.readyState
+      });
+      if (incoming) {
+        const existing = this.remoteStreams.get(id);
+        const stream = existing || incoming;
+        // Ensure the stream we keep has the latest tracks.
+        if (existing && incoming && existing !== incoming) {
+          incoming.getTracks().forEach((t) => {
+            if (!existing.getTracks().find((et) => et.id === t.id)) {
+              existing.addTrack(t);
+            }
+          });
         }
         this.remoteStreams.set(id, stream);
         this.emit("remoteStream", { id, stream });
@@ -284,8 +325,15 @@ export class WebRTCClient {
     const pc = this.getOrCreateConnection(id);
     this.ensureLocalTracks(pc);
 
+    log("[webrtc] sendOffer ->", {
+      to: id,
+      localTracks: this.localStream?.getTracks().map((t) => ({ id: t.id, kind: t.kind })),
+      senders: pc.getSenders().map((s) => ({ track: s.track?.id, kind: s.track?.kind }))
+    });
+
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    log("[webrtc] sending offer", { to: id, sdpHasVideo: offer.sdp?.includes("m=video"), sdpHasAudio: offer.sdp?.includes("m=audio") });
     this.send({ type: "signal", to: id, data: pc.localDescription });
   }
 
@@ -296,14 +344,30 @@ export class WebRTCClient {
 
     try {
       if ("sdp" in payload) {
+        log("[webrtc] handleSignal sdp", {
+          from: msg.from,
+          type: payload.type,
+          hasVideo: payload.sdp?.includes("m=video"),
+          hasAudio: payload.sdp?.includes("m=audio")
+        });
         await pc.setRemoteDescription(payload);
         if (payload.type === "offer") {
           this.ensureLocalTracks(pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+          log("[webrtc] sending answer", {
+            to: msg.from,
+            hasVideo: answer.sdp?.includes("m=video"),
+            hasAudio: answer.sdp?.includes("m=audio")
+          });
           this.send({ type: "signal", to: msg.from, data: pc.localDescription });
         }
       } else if ("candidate" in payload) {
+        log("[webrtc] handleSignal candidate", {
+          from: msg.from,
+          sdpMid: payload.sdpMid,
+          sdpMLineIndex: payload.sdpMLineIndex
+        });
         await pc.addIceCandidate(payload);
       }
     } catch (err) {

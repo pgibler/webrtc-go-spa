@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { createWebRTC } from "../packages/solid-webrtc/src";
 
 const VideoTile = (props: { label: string; stream: MediaStream; muted?: boolean }) => {
@@ -24,7 +24,7 @@ const VideoTile = (props: { label: string; stream: MediaStream; muted?: boolean 
   );
 };
 
-export default function App() {
+const RoomUI = () => {
   const {
     peerId,
     peers,
@@ -41,7 +41,7 @@ export default function App() {
   const peerEntries = createMemo(() => Array.from(remoteStreams()));
 
   return (
-    <main class="page">
+    <>
       <div class="panel header">
         <div class="title-row">
           <h1>Go + SolidJS WebRTC Room</h1>
@@ -98,6 +98,33 @@ export default function App() {
           </Show>
         </div>
       </div>
+    </>
+  );
+};
+
+const JoinRoomPrompt = (props: { onJoin: () => void }) => (
+  <div class="panel join-panel">
+    <div class="eyebrow">WebRTC playground</div>
+    <p class="lede">
+      Connect to the signaling server to get your peer ID, discover other participants, and start broadcasting.
+    </p>
+    <div class="controls">
+      <button onClick={props.onJoin}>Join room</button>
+    </div>
+    <div class="status hint">Media permissions are requested only after you join.</div>
+    <div class="status hint">A browser gesture is required to allow media streams to play.</div>
+    <div class="status hint">This button suffices for that requirement.</div>
+  </div>
+);
+
+export default function App() {
+  const [joined, setJoined] = createSignal(false);
+
+  return (
+    <main class={`page ${joined() ? "" : "landing"}`}>
+      <Show when={joined()} fallback={<JoinRoomPrompt onJoin={() => setJoined(true)} />}>
+        <RoomUI />
+      </Show>
     </main>
   );
 }
