@@ -112,8 +112,10 @@ const JoinRoomPrompt = (props: { onJoin: () => void }) => (
       <button onClick={props.onJoin}>Join room</button>
     </div>
     <div class="status hint">Media permissions are requested only after you join.</div>
-    <div class="status hint">A browser gesture is required to allow media streams to play.</div>
-    <div class="status hint">This button suffices for that requirement.</div>
+    <div class="status hint">
+      Browsers require a user gesture before media can autoplay; this join button provides that step so streams can start
+      once connected.
+    </div>
   </div>
 );
 
