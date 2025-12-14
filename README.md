@@ -1,6 +1,6 @@
-# WebRTC Go SPA
+# videochat.vc
 
-A minimal WebRTC demo built with a Go signaling server and a SolidJS single-page app. Uses Redis to track connected peers and who is currently broadcasting.
+A WebRTC application built with a Go signaling server and a SolidJS single-page app. Uses Redis to track connected peers and who is currently broadcasting.
 
 ## Stack
 - Go HTTP/WebSocket server (Gorilla WebSocket)
