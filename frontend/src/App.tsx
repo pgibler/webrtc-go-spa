@@ -44,7 +44,7 @@ const RoomUI = () => {
     <>
       <div class="panel header">
         <div class="title-row">
-          <h1>videochat.vc</h1>
+          <h1>videochat</h1>
           <div class="chip">{connected() ? "Live" : "Offline"}</div>
         </div>
         <div class="stats">
@@ -104,7 +104,7 @@ const RoomUI = () => {
 
 const JoinRoomPrompt = (props: { onJoin: () => void }) => (
   <div class="panel join-panel">
-    <h1>videochat.vc</h1>
+    <h1>videochat</h1>
     <p class="lede">
       Connect to the signaling server to get your peer ID, discover other participants, and start broadcasting.
     </p>

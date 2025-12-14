@@ -1,4 +1,4 @@
-# videochat.vc
+# videochat
 
 A WebRTC application built with a Go signaling server and a SolidJS single-page app. Uses Redis to track connected peers and who is currently broadcasting.
 
