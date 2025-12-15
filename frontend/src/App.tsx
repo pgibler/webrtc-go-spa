@@ -174,7 +174,7 @@ const JoinRoomPrompt = (props: { onJoin: (username: string) => void }) => {
     <form class="panel join-panel" onSubmit={handleSubmit}>
       <h1>videochat</h1>
       <p class="lede">
-        Connect to the signaling server to get your peer ID, discover other participants, and start broadcasting.
+        Enter a display name, join the room, and start broadcasting.
       </p>
       <label class="field">
         <span class="label">Display name</span>
