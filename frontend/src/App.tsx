@@ -39,48 +39,56 @@ const RoomUI = () => {
   } = createWebRTC();
 
   const peerEntries = createMemo(() => Array.from(remoteStreams()));
+  const [showPeers, setShowPeers] = createSignal(false);
+
+  createEffect(() => {
+    if (peers().length === 0) setShowPeers(false);
+  });
 
   return (
     <>
-      <div class="panel header">
-        <div class="title-row">
-          <h1>videochat</h1>
-          <div class="chip">{connected() ? "Live" : "Offline"}</div>
-        </div>
-        <div class="stats">
-          <div class="stat">
-            <label>Peer ID</label>
+      <header class="panel app-bar">
+        <div class="brand">
+          <div class="app-name">videochat</div>
+          <div class="id-line">
+            <span class="label">Your ID</span>
             <strong>{peerId() || "..."}</strong>
           </div>
-          <div class="stat">
-            <label>Peers in room</label>
-            <strong>{peers().length}</strong>
-          </div>
-          <div class="stat">
-            <label>Broadcasting</label>
-            <strong>{broadcasting().length}</strong>
-          </div>
-          <div class="stat">
-            <label>Status</label>
-            <strong>{status()}</strong>
-          </div>
         </div>
-        <div class="peers">
-          <label>Peers</label>
-          <div class="peer-list">
+        <div class="bar-controls">
+          <button class="peer-chip" type="button" onClick={() => setShowPeers((open) => !open)}>
+            <span class="label">Peers</span>
+            <span class="value">{peers().length}</span>
+            <span class="chevron">{showPeers() ? "v" : ">"}</span>
+          </button>
+          <button
+            class={`live-btn ${broadcastEnabled() ? "on" : ""}`}
+            onClick={() => (broadcastEnabled() ? stopBroadcast() : void startBroadcast())}
+          >
+            {broadcastEnabled() ? "Stop" : "Go Live"}
+          </button>
+        </div>
+        <div class="ws-pill" data-connected={connected() ? "true" : "false"}>
+          <span class="dot" />
+          <span>{connected() ? "Live" : "Offline"}</span>
+        </div>
+      </header>
+
+      <Show when={showPeers()}>
+        <div class="panel peer-drawer">
+          <div class="drawer-heading">
+            <div class="flex flex-row space-between">
+              <span>Peers in room</span>
+            </div>
+            <span class="count">{peers().length}</span>
+          </div>
+          <div class="peer-list compact">
             <Show when={peers().length} fallback={<span class="status">Waiting for peers...</span>}>
-              <For each={peers()}>
-                {(id) => <span class="pill">{id}</span>}
-              </For>
+              <For each={peers()}>{(id) => <span class="pill small">{id}</span>}</For>
             </Show>
           </div>
         </div>
-        <div class="controls">
-          <button onClick={() => (broadcastEnabled() ? stopBroadcast() : void startBroadcast())}>
-            {broadcastEnabled() ? "Stop broadcasting" : "Start broadcasting"}
-          </button>
-        </div>
-      </div>
+      </Show>
 
       <div class="panel">
         <h3>Live Streams</h3>
