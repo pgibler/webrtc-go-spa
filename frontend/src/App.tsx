@@ -24,7 +24,7 @@ const VideoTile = (props: { label: string; stream: MediaStream; muted?: boolean 
   );
 };
 
-const RoomUI = () => {
+const RoomUI = (props: { username: string }) => {
   const {
     peerId,
     peers,
@@ -35,15 +35,63 @@ const RoomUI = () => {
     localStream,
     broadcastEnabled,
     startBroadcast,
-    stopBroadcast
+    stopBroadcast,
+    client
   } = createWebRTC();
 
   const peerEntries = createMemo(() => Array.from(remoteStreams()));
   const [showPeers, setShowPeers] = createSignal(false);
+  const [usernames, setUsernames] = createSignal<Record<string, string>>({});
 
   createEffect(() => {
     if (peers().length === 0) setShowPeers(false);
   });
+
+  createEffect(() => {
+    const off = client.on("state", (msg: any) => {
+      const data = msg as { type: string; id?: string; usernames?: Record<string, string> };
+      if (data.usernames) {
+        setUsernames((prev) => ({ ...prev, ...data.usernames }));
+      }
+      if (data.type === "peer-left" && data.id) {
+        setUsernames((prev) => {
+          const next = { ...prev };
+          delete next[data.id];
+          return next;
+        });
+      }
+    });
+    return () => off();
+  });
+
+  const selfLabel = () => `${displayName()} (you)`;
+
+  createEffect(() => {
+    const id = peerId();
+    if (props.username && id) {
+      setUsernames((prev) => ({ ...prev, [id]: props.username }));
+    }
+  });
+
+  createEffect(() => {
+    if (props.username && connected()) {
+      client.sendAppMessage({ type: "set-username", username: props.username });
+    }
+  });
+
+  const displayName = () => {
+    const id = peerId();
+    if (!id) return props.username || "...";
+    return usernames()[id] || props.username || id;
+  };
+
+  const labelForPeer = (id: string) => {
+    const name = usernames()[id] || (id === peerId() ? displayName() : id);
+    if (id === peerId() && name) {
+      return `${name} (you)`;
+    }
+    return name;
+  };
 
   return (
     <>
@@ -51,8 +99,8 @@ const RoomUI = () => {
         <div class="brand">
           <div class="app-name">videochat</div>
           <div class="id-line">
-            <span class="label">Your ID</span>
-            <strong>{peerId() || "..."}</strong>
+            <span class="label">You</span>
+            <strong>{displayName()}</strong>
           </div>
         </div>
         <div class="bar-controls">
@@ -84,7 +132,9 @@ const RoomUI = () => {
           </div>
           <div class="peer-list compact">
             <Show when={peers().length} fallback={<span class="status">Waiting for peers...</span>}>
-              <For each={peers()}>{(id) => <span class="pill small">{id}</span>}</For>
+              <For each={peers()}>
+                {(id) => <span class="pill small">{labelForPeer(id)}</span>}
+              </For>
             </Show>
           </div>
         </div>
@@ -94,11 +144,11 @@ const RoomUI = () => {
         <h3>Live Streams</h3>
         <div class="videos">
           <Show when={localStream()}>
-            {(stream) => <VideoTile label="You" stream={stream()} muted />}
+            {(stream) => <VideoTile label={selfLabel()} stream={stream()} muted />}
           </Show>
           <For each={peerEntries()}>
             {([id, stream]) => (
-              <VideoTile label={id === peerId() ? "You" : id} stream={stream} muted={id === peerId()} />
+              <VideoTile label={labelForPeer(id)} stream={stream} muted={id === peerId()} />
             )}
           </For>
           <Show when={!localStream() && remoteStreams().size === 0}>
@@ -110,30 +160,66 @@ const RoomUI = () => {
   );
 };
 
-const JoinRoomPrompt = (props: { onJoin: () => void }) => (
-  <div class="panel join-panel">
-    <h1>videochat</h1>
-    <p class="lede">
-      Connect to the signaling server to get your peer ID, discover other participants, and start broadcasting.
-    </p>
-    <div class="controls">
-      <button onClick={props.onJoin}>Join room</button>
-    </div>
-    <div class="status hint">Media permissions are requested only after you join.</div>
-    <div class="status hint">
-      Browsers require a user gesture before media can autoplay; this join button provides that step so streams can start
-      once connected.
-    </div>
-  </div>
-);
+const JoinRoomPrompt = (props: { onJoin: (username: string) => void }) => {
+  const [name, setName] = createSignal("");
+
+  const handleSubmit = (evt: Event) => {
+    evt.preventDefault();
+    const value = name().trim();
+    if (!value) return;
+    props.onJoin(value);
+  };
+
+  return (
+    <form class="panel join-panel" onSubmit={handleSubmit}>
+      <h1>videochat</h1>
+      <p class="lede">
+        Connect to the signaling server to get your peer ID, discover other participants, and start broadcasting.
+      </p>
+      <label class="field">
+        <span class="label">Display name</span>
+        <input
+          class="text-input"
+          name="username"
+          autocomplete="name"
+          value={name()}
+          onInput={(evt) => setName(evt.currentTarget.value)}
+          placeholder="e.g. Paul"
+          required
+        />
+      </label>
+      <div class="controls">
+        <button type="submit" disabled={!name().trim()}>
+          Join room
+        </button>
+      </div>
+      <div class="status hint">Media permissions are requested only after you join.</div>
+      <div class="status hint">
+        Browsers require a user gesture before media can autoplay; this join button provides that step so streams can
+        start once connected.
+      </div>
+    </form>
+  );
+};
 
 export default function App() {
   const [joined, setJoined] = createSignal(false);
+  const [username, setUsername] = createSignal("");
 
   return (
     <main class={`page ${joined() ? "" : "landing"}`}>
-      <Show when={joined()} fallback={<JoinRoomPrompt onJoin={() => setJoined(true)} />}>
-        <RoomUI />
+      <Show
+        when={joined()}
+        fallback={
+          <JoinRoomPrompt
+            onJoin={(name) => {
+              setUsername(name);
+              setJoined(true);
+            }}
+          />
+        }
+      >
+        <RoomUI username={username()} />
       </Show>
     </main>
   );

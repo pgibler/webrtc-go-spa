@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,7 +138,7 @@ func (h *Hub) register(ctx context.Context, c *client) error {
 		return err
 	}
 
-	peers, broadcasting, err := h.store.State(ctx)
+	peers, broadcasting, usernames, err := h.store.State(ctx)
 	if err != nil {
 		h.logger.Printf("presence state error: %v", err)
 	}
@@ -151,6 +152,7 @@ func (h *Hub) register(ctx context.Context, c *client) error {
 		Broadcasting: broadcasting,
 		ICEServers:   h.iceServers,
 		ICEMode:      h.iceMode,
+		Usernames:    usernames,
 	}
 	c.sendJSON(welcome)
 
@@ -159,6 +161,7 @@ func (h *Hub) register(ctx context.Context, c *client) error {
 		ID:           c.id,
 		Peers:        peers,
 		Broadcasting: broadcasting,
+		Usernames:    usernames,
 	}
 	h.broadcast(join, c.id)
 	return nil
@@ -175,7 +178,7 @@ func (h *Hub) unregister(c *client) {
 		h.logger.Printf("presence remove: %v", err)
 	}
 
-	peers, broadcasting, err := h.store.State(ctx)
+	peers, broadcasting, usernames, err := h.store.State(ctx)
 	if err != nil {
 		h.logger.Printf("presence state error: %v", err)
 	}
@@ -185,6 +188,7 @@ func (h *Hub) unregister(c *client) {
 		ID:           c.id,
 		Peers:        peers,
 		Broadcasting: broadcasting,
+		Usernames:    usernames,
 	}
 	h.broadcast(leave, c.id)
 	h.logger.Printf("ws: unregistered %s (peers=%d broadcasting=%d)", c.id, len(peers), len(broadcasting))
@@ -225,6 +229,13 @@ func (h *Hub) handleInbound(c *client, msg InboundMessage) {
 			return
 		}
 		h.updateBroadcast(c.id, *msg.Enabled)
+	case "set-username":
+		username := strings.TrimSpace(msg.Username)
+		ctx := context.Background()
+		if err := h.store.SetUsername(ctx, c.id, username); err != nil {
+			h.logger.Printf("presence set username: %v", err)
+		}
+		h.publishPresence(ctx, c.id, "usernames")
 	default:
 		h.logger.Printf("unknown message type from %s: %s", c.id, msg.Type)
 	}
@@ -255,7 +266,7 @@ func (h *Hub) updateBroadcast(id string, enabled bool) {
 	}
 	h.logger.Printf("ws: broadcast state id=%s enabled=%v", id, enabled)
 
-	peers, broadcasting, err := h.store.State(ctx)
+	peers, broadcasting, usernames, err := h.store.State(ctx)
 	if err != nil {
 		h.logger.Printf("presence state error: %v", err)
 	}
@@ -266,6 +277,23 @@ func (h *Hub) updateBroadcast(id string, enabled bool) {
 		Enabled:      &enabled,
 		Peers:        peers,
 		Broadcasting: broadcasting,
+		Usernames:    usernames,
+	}
+	h.broadcast(state, "")
+}
+
+func (h *Hub) publishPresence(ctx context.Context, id string, eventType string) {
+	peers, broadcasting, usernames, err := h.store.State(ctx)
+	if err != nil {
+		h.logger.Printf("presence state error: %v", err)
+	}
+
+	state := StateMessage{
+		Type:         eventType,
+		ID:           id,
+		Peers:        peers,
+		Broadcasting: broadcasting,
+		Usernames:    usernames,
 	}
 	h.broadcast(state, "")
 }

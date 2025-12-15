@@ -6,13 +6,14 @@ export type SignalMessage = {
 };
 
 export type StateMessage = {
-  type: "welcome" | "peer-joined" | "peer-left" | "broadcast-state";
+  type: "welcome" | "peer-joined" | "peer-left" | "broadcast-state" | string;
   id?: string;
   peers?: string[];
   broadcasting?: string[];
   enabled?: boolean;
   iceServers?: RTCIceServer[];
   iceMode?: string;
+  [key: string]: unknown;
 };
 
 export type IncomingMessage = StateMessage | SignalMessage;
@@ -407,6 +408,10 @@ export class WebRTCClient {
     }
 
     this.emit("state", msg);
+  }
+
+  sendAppMessage(payload: any) {
+    this.send(payload);
   }
 
   private removeRemoteStream(id: string) {

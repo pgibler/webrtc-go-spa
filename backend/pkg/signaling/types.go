@@ -11,21 +11,23 @@ type ICEServer struct {
 
 // InboundMessage is the payload clients send to the signaling service.
 type InboundMessage struct {
-	Type    string          `json:"type"`
-	To      string          `json:"to,omitempty"`
-	Data    json.RawMessage `json:"data,omitempty"`
-	Enabled *bool           `json:"enabled,omitempty"`
+	Type     string          `json:"type"`
+	To       string          `json:"to,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	Enabled  *bool           `json:"enabled,omitempty"`
+	Username string          `json:"username,omitempty"`
 }
 
 // StateMessage is broadcast to clients to convey room state.
 type StateMessage struct {
-	Type         string      `json:"type"`
-	ID           string      `json:"id,omitempty"`
-	Peers        []string    `json:"peers,omitempty"`
-	Broadcasting []string    `json:"broadcasting,omitempty"`
-	Enabled      *bool       `json:"enabled,omitempty"`
-	ICEServers   []ICEServer `json:"iceServers,omitempty"`
-	ICEMode      string      `json:"iceMode,omitempty"`
+	Type         string            `json:"type"`
+	ID           string            `json:"id,omitempty"`
+	Peers        []string          `json:"peers,omitempty"`
+	Broadcasting []string          `json:"broadcasting,omitempty"`
+	Enabled      *bool             `json:"enabled,omitempty"`
+	ICEServers   []ICEServer       `json:"iceServers,omitempty"`
+	ICEMode      string            `json:"iceMode,omitempty"`
+	Usernames    map[string]string `json:"usernames,omitempty"`
 }
 
 // SignalMessage carries peer-to-peer WebRTC signaling data.

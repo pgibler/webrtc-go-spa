@@ -95,6 +95,32 @@ body {
   letter-spacing: 0.05em;
 }
 
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.text-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.text-input::placeholder {
+  color: #9ca3af;
+}
+
 .bar-controls {
   display: flex;
   gap: 10px;
@@ -130,6 +156,12 @@ button:active {
 button:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.35);
   outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .peer-chip {
