@@ -272,7 +272,7 @@ const Landing = (props: { onCreateRoom: () => void; creating: boolean; error?: s
   <div class="panel hero">
     <div class="hero-body">
       <div>
-        <p class="kicker">videochat - Private video chat, shared by link</p>
+        <p class="kicker">videochat - Private video chat</p>
         <h1 class="headline">Create a room and start broadcasting in seconds.</h1>
         <p class="lede">
           Only people with your link can join. Create a room, copy the link, share with your friends, and go live.
