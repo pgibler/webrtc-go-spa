@@ -22,6 +22,7 @@ type Room struct {
 type Store interface {
 	Create(ctx context.Context) (*Room, error)
 	Get(ctx context.Context, code string) (*Room, error)
+	Delete(ctx context.Context, code string) error
 }
 
 // RedisStore persists room metadata in Redis.
@@ -93,6 +94,22 @@ func (s *RedisStore) Get(ctx context.Context, code string) (*Room, error) {
 	}
 
 	return &Room{Code: code, CreatedAt: createdAt}, nil
+}
+
+// Delete removes a room by code, returning ErrNotFound when the room does not exist.
+func (s *RedisStore) Delete(ctx context.Context, code string) error {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ErrNotFound
+	}
+	deleted, err := s.rdb.Del(ctx, s.roomKey(code)).Result()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // generateCode produces a short, URL-safe room code.

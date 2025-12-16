@@ -39,7 +39,7 @@ func main() {
 	}
 
 	roomStore := rooms.NewRedisStore(rdb, "webrtc")
-	hubs := newHubManager(rdb, signaling.HubOptions{
+	hubs := newHubManager(rdb, roomStore, signaling.HubOptions{
 		ICEServers: cfg.ICEServers,
 		ICEMode:    cfg.ICEMode,
 	})
@@ -272,18 +272,26 @@ func resolveWSURL(cfg config, r *http.Request) string {
 }
 
 // hubManager keeps one signaling Hub per room, each with isolated Redis keys.
-type hubManager struct {
-	mu   sync.Mutex
-	hubs map[string]*signaling.Hub
-	rdb  *redis.Client
-	opts signaling.HubOptions
+type hubEntry struct {
+	hub   *signaling.Hub
+	timer *time.Timer
+	store signaling.PresenceStore
 }
 
-func newHubManager(rdb *redis.Client, opts signaling.HubOptions) *hubManager {
+type hubManager struct {
+	mu        sync.Mutex
+	hubs      map[string]*hubEntry
+	rdb       *redis.Client
+	opts      signaling.HubOptions
+	roomStore rooms.Store
+}
+
+func newHubManager(rdb *redis.Client, roomStore rooms.Store, opts signaling.HubOptions) *hubManager {
 	return &hubManager{
-		hubs: make(map[string]*signaling.Hub),
-		rdb:  rdb,
-		opts: opts,
+		hubs:      make(map[string]*hubEntry),
+		rdb:       rdb,
+		opts:      opts,
+		roomStore: roomStore,
 	}
 }
 
@@ -297,16 +305,74 @@ func (m *hubManager) hubForRoom(code string) *signaling.Hub {
 	defer m.mu.Unlock()
 
 	if h := m.hubs[code]; h != nil {
-		return h
+		if h.timer != nil {
+			h.timer.Stop()
+			h.timer = nil
+		}
+		return h.hub
 	}
 
 	store := signaling.NewRedisPresence(m.rdb, fmt.Sprintf("webrtc:room:%s", code))
 	if err := store.Reset(context.Background()); err != nil {
 		log.Printf("presence reset for room %s: %v", code, err)
 	}
-	hub := signaling.NewHub(store, m.opts)
-	m.hubs[code] = hub
+
+	opts := m.opts
+	opts.OnEmpty = func() {
+		m.scheduleCleanup(code, store)
+	}
+
+	hub := signaling.NewHub(store, opts)
+	m.hubs[code] = &hubEntry{hub: hub, store: store}
 	return hub
+}
+
+func (m *hubManager) scheduleCleanup(code string, store signaling.PresenceStore) {
+	m.mu.Lock()
+	entry := m.hubs[code]
+	if entry == nil {
+		m.mu.Unlock()
+		return
+	}
+	if entry.timer != nil {
+		m.mu.Unlock()
+		return
+	}
+
+	entry.timer = time.AfterFunc(30*time.Second, func() {
+		m.cleanupRoom(code, store)
+	})
+	m.mu.Unlock()
+}
+
+func (m *hubManager) cleanupRoom(code string, store signaling.PresenceStore) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	peers, _, _, err := store.State(ctx)
+	if err != nil {
+		log.Printf("cleanup state error for room %s: %v", code, err)
+	}
+	if len(peers) > 0 {
+		m.mu.Lock()
+		if entry, ok := m.hubs[code]; ok {
+			entry.timer = nil
+		}
+		m.mu.Unlock()
+		return
+	}
+
+	if err := store.Reset(ctx); err != nil {
+		log.Printf("cleanup presence reset failed for room %s: %v", code, err)
+	}
+	if err := m.roomStore.Delete(ctx, code); err != nil && !errors.Is(err, rooms.ErrNotFound) {
+		log.Printf("cleanup room delete failed for room %s: %v", code, err)
+	}
+
+	m.mu.Lock()
+	delete(m.hubs, code)
+	m.mu.Unlock()
+	log.Printf("room %s cleaned up after inactivity", code)
 }
 
 func wsHandler(hubs *hubManager, roomStore rooms.Store) http.Handler {

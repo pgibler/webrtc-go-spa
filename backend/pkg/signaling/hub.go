@@ -28,6 +28,7 @@ type HubOptions struct {
 	ICEMode    string
 	Logger     *log.Logger
 	Upgrader   *websocket.Upgrader
+	OnEmpty    func()
 }
 
 // ConnOptions controls how a connection is registered.
@@ -47,6 +48,7 @@ type Hub struct {
 	iceMode    string
 	upgrader   websocket.Upgrader
 	logger     *log.Logger
+	onEmpty    func()
 }
 
 type client struct {
@@ -81,6 +83,7 @@ func NewHub(store PresenceStore, opts HubOptions) *Hub {
 		iceMode:    opts.ICEMode,
 		upgrader:   upgrader,
 		logger:     logger,
+		onEmpty:    opts.OnEmpty,
 	}
 }
 
@@ -192,6 +195,10 @@ func (h *Hub) unregister(c *client) {
 	}
 	h.broadcast(leave, c.id)
 	h.logger.Printf("ws: unregistered %s (peers=%d broadcasting=%d)", c.id, len(peers), len(broadcasting))
+
+	if len(peers) == 0 && h.onEmpty != nil {
+		h.onEmpty()
+	}
 }
 
 func (h *Hub) broadcast(msg interface{}, skipID string) {
