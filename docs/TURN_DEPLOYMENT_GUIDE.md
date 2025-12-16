@@ -21,7 +21,7 @@ listening-port=3478
 #tls-listening-port=5349          # enable if using TURN over TLS/443
 #listening-ip=<bind-ip>            # optional
 external-ip=<public-ip>[/<private-ip>]  # include private IP if behind NAT
-realm=webrtc-go-spa
+realm=videochat
 fingerprint
 lt-cred-mech
 user=demo:demo123                 # keep in sync with app env TURN_USERNAME/PASSWORD

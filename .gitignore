@@ -5,9 +5,9 @@ frontend/.vite
 frontend/.env
 
 # Go build outputs
-backend/webrtc-go-spa
-backend/webrtc-go-spa.exe
-backend/webrtc-go-spa.test
+backend/videochat
+backend/videochat.exe
+backend/videochat.test
 backend/bin/
 backend/coverage.*
 *.out

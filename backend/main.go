@@ -16,8 +16,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"webrtc-go-spa/pkg/rooms"
-	"webrtc-go-spa/pkg/signaling"
+	"videochat/pkg/rooms"
+	"videochat/pkg/signaling"
 )
 
 const defaultStaticPath = "../frontend/dist"

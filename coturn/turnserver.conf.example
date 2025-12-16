@@ -9,7 +9,7 @@ listening-port=3478
 #listening-ip=0.0.0.0
 #external-ip=PUBLIC_IP/LOCAL_IP
 
-realm=webrtc-go-spa
+realm=videochat
 fingerprint
 lt-cred-mech
 

@@ -1,4 +1,4 @@
-module webrtc-go-spa
+module videochat
 
 go 1.22
 
