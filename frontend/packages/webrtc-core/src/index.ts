@@ -281,6 +281,14 @@ export class WebRTCClient {
 
     const negotiation = this.getNegotiationState(id);
 
+    pc.onsignalingstatechange = () => {
+      log("[webrtc] signalingstatechange", { id, signalingState: pc.signalingState });
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      log("[webrtc] iceconnectionstatechange", { id, iceConnectionState: pc.iceConnectionState });
+    };
+
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         log("[webrtc] icecandidate", { id, candidate: event.candidate.type, sdpMid: event.candidate.sdpMid });
@@ -315,6 +323,7 @@ export class WebRTCClient {
 
     pc.onconnectionstatechange = () => {
       const state = pc?.connectionState || "";
+      log("[webrtc] connectionstatechange", { id, connectionState: state });
       // "disconnected" is often transient during ICE restarts / network blips; avoid tearing down immediately.
       if (["failed", "closed"].includes(state)) {
         this.removePeer(id);
@@ -401,6 +410,16 @@ export class WebRTCClient {
         const offerCollision =
           description.type === "offer" &&
           (negotiation.makingOffer || pc.signalingState !== "stable" || negotiation.isSettingRemoteAnswerPending);
+        if (description.type === "offer") {
+          log("[webrtc] offer check", {
+            from: msg.from,
+            offerCollision,
+            polite: negotiation.polite,
+            makingOffer: negotiation.makingOffer,
+            isSettingRemoteAnswerPending: negotiation.isSettingRemoteAnswerPending,
+            signalingState: pc.signalingState
+          });
+        }
         negotiation.ignoreOffer = !negotiation.polite && offerCollision;
         if (negotiation.ignoreOffer) {
           log("[webrtc] ignoring offer (glare, impolite)", { from: msg.from, signalingState: pc.signalingState });
@@ -409,6 +428,7 @@ export class WebRTCClient {
 
         // Perfect negotiation: if we're polite and collided, rollback our local offer and accept theirs.
         if (offerCollision && negotiation.polite) {
+          log("[webrtc] glare rollback (polite)", { from: msg.from, signalingState: pc.signalingState });
           try {
             await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
           } catch (err) {
@@ -421,6 +441,7 @@ export class WebRTCClient {
         negotiation.isSettingRemoteAnswerPending = false;
 
         if (negotiation.pendingCandidates.length > 0 && pc.remoteDescription) {
+          log("[webrtc] flushing queued candidates", { from: msg.from, count: negotiation.pendingCandidates.length });
           const queued = negotiation.pendingCandidates.slice();
           negotiation.pendingCandidates = [];
           for (const cand of queued) {
