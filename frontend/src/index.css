@@ -17,12 +17,14 @@
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(circle at 12% 16%, rgba(255, 255, 255, 0.8), rgba(232, 237, 245, 0.85)),
     linear-gradient(180deg, rgba(236, 242, 251, 0.88), rgba(223, 230, 242, 0.9));
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .page {
@@ -35,9 +37,12 @@ body {
 
 .page.landing {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-top: calc(clamp(14px, 3vw, 32px) + env(safe-area-inset-top));
+  padding-bottom: calc(clamp(14px, 3vw, 32px) + env(safe-area-inset-bottom));
 }
 
 .panel {
