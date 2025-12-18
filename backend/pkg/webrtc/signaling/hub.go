@@ -12,6 +12,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+
+	"videochat/pkg/presence"
+	"videochat/pkg/webrtc/protocol"
 )
 
 const (
@@ -22,13 +25,31 @@ const (
 	upgradeWriteBuffer = 1024
 )
 
+// BroadcastStore is an optional application-level store for tracking who is "live".
+type BroadcastStore interface {
+	Reset(ctx context.Context) error
+	RemovePeer(ctx context.Context, id string) error
+	SetBroadcast(ctx context.Context, id string, enabled bool) error
+	Broadcasting(ctx context.Context) ([]string, error)
+}
+
+// UsernameStore is an optional application-level store for tracking display names.
+type UsernameStore interface {
+	Reset(ctx context.Context) error
+	RemovePeer(ctx context.Context, id string) error
+	SetUsername(ctx context.Context, id string, username string) error
+	Usernames(ctx context.Context) (map[string]string, error)
+}
+
 // HubOptions configures a Hub instance.
 type HubOptions struct {
-	ICEServers []ICEServer
+	ICEServers []protocol.ICEServer
 	ICEMode    string
 	Logger     *log.Logger
 	Upgrader   *websocket.Upgrader
 	OnEmpty    func()
+	Broadcasts BroadcastStore
+	Usernames  UsernameStore
 }
 
 // ConnOptions controls how a connection is registered.
@@ -43,8 +64,10 @@ type ConnOptions struct {
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[string]*client
-	store      PresenceStore
-	iceServers []ICEServer
+	presence   presence.Store
+	broadcasts BroadcastStore
+	usernames  UsernameStore
+	iceServers []protocol.ICEServer
 	iceMode    string
 	upgrader   websocket.Upgrader
 	logger     *log.Logger
@@ -59,8 +82,8 @@ type client struct {
 	cancel context.CancelFunc
 }
 
-// NewHub builds a signaling Hub with the provided store and options.
-func NewHub(store PresenceStore, opts HubOptions) *Hub {
+// NewHub builds a signaling Hub with the provided presence store and options.
+func NewHub(presenceStore presence.Store, opts HubOptions) *Hub {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  upgradeReadBuffer,
 		WriteBufferSize: upgradeWriteBuffer,
@@ -78,7 +101,9 @@ func NewHub(store PresenceStore, opts HubOptions) *Hub {
 
 	return &Hub{
 		clients:    make(map[string]*client),
-		store:      store,
+		presence:   presenceStore,
+		broadcasts: opts.Broadcasts,
+		usernames:  opts.Usernames,
 		iceServers: opts.ICEServers,
 		iceMode:    opts.ICEMode,
 		upgrader:   upgrader,
@@ -87,7 +112,6 @@ func NewHub(store PresenceStore, opts HubOptions) *Hub {
 	}
 }
 
-// HTTPHandler upgrades HTTP connections and registers them with the Hub.
 func (h *Hub) HTTPHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := h.upgrader.Upgrade(w, r, nil)
@@ -132,23 +156,40 @@ func (h *Hub) Accept(conn *websocket.Conn, opts ConnOptions) error {
 	return nil
 }
 
+func (h *Hub) snapshot(ctx context.Context) (peers []string, broadcasting []string, usernames map[string]string) {
+	peers, err := h.presence.Peers(ctx)
+	if err != nil {
+		h.logger.Printf("presence peers error: %v", err)
+	}
+
+	if h.broadcasts != nil {
+		broadcasting, err = h.broadcasts.Broadcasting(ctx)
+		if err != nil {
+			h.logger.Printf("broadcast state error: %v", err)
+		}
+	}
+	if h.usernames != nil {
+		usernames, err = h.usernames.Usernames(ctx)
+		if err != nil {
+			h.logger.Printf("username state error: %v", err)
+		}
+	}
+	return peers, broadcasting, usernames
+}
+
 func (h *Hub) register(ctx context.Context, c *client) error {
 	h.mu.Lock()
 	h.clients[c.id] = c
 	h.mu.Unlock()
 
-	if err := h.store.AddPeer(ctx, c.id); err != nil {
+	if err := h.presence.AddPeer(ctx, c.id); err != nil {
 		return err
 	}
 
-	peers, broadcasting, usernames, err := h.store.State(ctx)
-	if err != nil {
-		h.logger.Printf("presence state error: %v", err)
-	}
-
+	peers, broadcasting, usernames := h.snapshot(ctx)
 	h.logger.Printf("ws: registered %s (peers=%d broadcasting=%d)", c.id, len(peers), len(broadcasting))
 
-	welcome := StateMessage{
+	welcome := protocol.StateMessage{
 		Type:         "welcome",
 		ID:           c.id,
 		Peers:        peers,
@@ -159,7 +200,7 @@ func (h *Hub) register(ctx context.Context, c *client) error {
 	}
 	c.sendJSON(welcome)
 
-	join := StateMessage{
+	join := protocol.StateMessage{
 		Type:         "peer-joined",
 		ID:           c.id,
 		Peers:        peers,
@@ -177,16 +218,24 @@ func (h *Hub) unregister(c *client) {
 	delete(h.clients, c.id)
 	h.mu.Unlock()
 
-	if err := h.store.RemovePeer(ctx, c.id); err != nil {
+	if err := h.presence.RemovePeer(ctx, c.id); err != nil {
 		h.logger.Printf("presence remove: %v", err)
 	}
 
-	peers, broadcasting, usernames, err := h.store.State(ctx)
-	if err != nil {
-		h.logger.Printf("presence state error: %v", err)
+	if h.broadcasts != nil {
+		if err := h.broadcasts.RemovePeer(ctx, c.id); err != nil {
+			h.logger.Printf("broadcast state remove: %v", err)
+		}
+	}
+	if h.usernames != nil {
+		if err := h.usernames.RemovePeer(ctx, c.id); err != nil {
+			h.logger.Printf("username state remove: %v", err)
+		}
 	}
 
-	leave := StateMessage{
+	peers, broadcasting, usernames := h.snapshot(ctx)
+
+	leave := protocol.StateMessage{
 		Type:         "peer-left",
 		ID:           c.id,
 		Peers:        peers,
@@ -223,7 +272,7 @@ func (h *Hub) broadcast(msg interface{}, skipID string) {
 	}
 }
 
-func (h *Hub) handleInbound(c *client, msg InboundMessage) {
+func (h *Hub) handleInbound(c *client, msg protocol.InboundMessage) {
 	h.logger.Printf("ws: inbound type=%s from=%s to=%s enabled=%v", msg.Type, c.id, msg.To, msg.Enabled)
 	switch msg.Type {
 	case "signal":
@@ -232,15 +281,18 @@ func (h *Hub) handleInbound(c *client, msg InboundMessage) {
 		}
 		h.forwardSignal(c.id, msg.To, msg.Data)
 	case "broadcast":
-		if msg.Enabled == nil {
+		if msg.Enabled == nil || h.broadcasts == nil {
 			return
 		}
 		h.updateBroadcast(c.id, *msg.Enabled)
 	case "set-username":
+		if h.usernames == nil {
+			return
+		}
 		username := strings.TrimSpace(msg.Username)
 		ctx := context.Background()
-		if err := h.store.SetUsername(ctx, c.id, username); err != nil {
-			h.logger.Printf("presence set username: %v", err)
+		if err := h.usernames.SetUsername(ctx, c.id, username); err != nil {
+			h.logger.Printf("username state set username: %v", err)
 		}
 		h.publishPresence(ctx, c.id, "usernames")
 	default:
@@ -257,7 +309,7 @@ func (h *Hub) forwardSignal(from, to string, payload json.RawMessage) {
 		return
 	}
 
-	msg := SignalMessage{
+	msg := protocol.SignalMessage{
 		Type: "signal",
 		From: from,
 		To:   to,
@@ -268,17 +320,13 @@ func (h *Hub) forwardSignal(from, to string, payload json.RawMessage) {
 
 func (h *Hub) updateBroadcast(id string, enabled bool) {
 	ctx := context.Background()
-	if err := h.store.SetBroadcast(ctx, id, enabled); err != nil {
-		h.logger.Printf("presence update broadcast: %v", err)
+	if err := h.broadcasts.SetBroadcast(ctx, id, enabled); err != nil {
+		h.logger.Printf("broadcast state update: %v", err)
 	}
 	h.logger.Printf("ws: broadcast state id=%s enabled=%v", id, enabled)
 
-	peers, broadcasting, usernames, err := h.store.State(ctx)
-	if err != nil {
-		h.logger.Printf("presence state error: %v", err)
-	}
-
-	state := StateMessage{
+	peers, broadcasting, usernames := h.snapshot(ctx)
+	state := protocol.StateMessage{
 		Type:         "broadcast-state",
 		ID:           id,
 		Enabled:      &enabled,
@@ -290,12 +338,8 @@ func (h *Hub) updateBroadcast(id string, enabled bool) {
 }
 
 func (h *Hub) publishPresence(ctx context.Context, id string, eventType string) {
-	peers, broadcasting, usernames, err := h.store.State(ctx)
-	if err != nil {
-		h.logger.Printf("presence state error: %v", err)
-	}
-
-	state := StateMessage{
+	peers, broadcasting, usernames := h.snapshot(ctx)
+	state := protocol.StateMessage{
 		Type:         eventType,
 		ID:           id,
 		Peers:        peers,
@@ -337,7 +381,7 @@ func (c *client) readPump(h *Hub) {
 			return
 		}
 
-		var msg InboundMessage
+		var msg protocol.InboundMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			h.logger.Printf("bad payload from %s: %v", c.id, err)
 			continue

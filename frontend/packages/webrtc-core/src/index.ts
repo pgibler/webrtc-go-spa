@@ -60,44 +60,6 @@ const logError = (...args: unknown[]) => {
   }
 };
 
-type ClientSettings = {
-  wsURL?: string;
-  iceMode?: string;
-  iceServers?: RTCIceServer[];
-};
-
-let settingsCache: ClientSettings | null = null;
-let settingsPromise: Promise<ClientSettings | null> | null = null;
-
-const fetchSettings = async (): Promise<ClientSettings | null> => {
-  if (settingsCache) return settingsCache;
-  if (settingsPromise) return settingsPromise;
-
-  settingsPromise = (async () => {
-    if (typeof window === "undefined" || typeof fetch === "undefined") return null;
-    try {
-      const res = await fetch("/api/settings", { headers: { Accept: "application/json" } });
-      if (!res.ok) return null;
-      const data = (await res.json()) as ClientSettings;
-      settingsCache = data;
-      return data;
-    } catch {
-      return null;
-    } finally {
-      settingsPromise = null;
-    }
-  })();
-
-  return settingsPromise;
-};
-
-const defaultWsURL = () => {
-  if (settingsCache?.wsURL) return settingsCache.wsURL;
-  if (typeof window === "undefined") return "";
-  const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}/ws`;
-};
-
 export class WebRTCClient {
   private socket: WebSocket | null = null;
   private connections = new Map<string, RTCPeerConnection>();
@@ -125,7 +87,6 @@ export class WebRTCClient {
     this.wsURL = opts.wsURL || "";
     this.iceServers = opts.iceServers || defaultIceServers;
     this.socketFactory = opts.socketFactory || ((url: string) => new WebSocket(url));
-    void fetchSettings();
   }
 
   on<K extends EventKey>(event: K, handler: Handler<K>) {
@@ -155,36 +116,41 @@ export class WebRTCClient {
     this.emit("status", "Connecting to signaling server...");
 
     void (async () => {
-      const resolvedURL = await this.resolveWsURL();
-      const socket = this.socketFactory(resolvedURL);
-      this.socket = socket;
+      try {
+        const resolvedURL = await this.resolveWsURL();
+        const socket = this.socketFactory(resolvedURL);
+        this.socket = socket;
 
-      socket.onopen = () => {
-        log("[webrtc] ws open", { url: resolvedURL });
-        this.emit("connected", undefined);
-        this.emit("status", "Connected");
-      };
-      socket.onclose = (ev) => {
-        log("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
-        this.emit("disconnected", undefined);
-        this.emit("status", "Disconnected from signaling server");
-      };
-      socket.onerror = (err) => {
-        logError("[webrtc] ws error", err);
-        this.emit("error", new Error("WebSocket error"));
-      };
-      socket.onmessage = (event) => {
-        try {
-          const message: IncomingMessage = JSON.parse(event.data);
-          if (message.type === "signal") {
-            void this.handleSignal(message as SignalMessage);
-          } else {
-            this.handleState(message as StateMessage);
+        socket.onopen = () => {
+          log("[webrtc] ws open", { url: resolvedURL });
+          this.emit("connected", undefined);
+          this.emit("status", "Connected");
+        };
+        socket.onclose = (ev) => {
+          log("[webrtc] ws close", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+          this.emit("disconnected", undefined);
+          this.emit("status", "Disconnected from signaling server");
+        };
+        socket.onerror = (err) => {
+          logError("[webrtc] ws error", err);
+          this.emit("error", new Error("WebSocket error"));
+        };
+        socket.onmessage = (event) => {
+          try {
+            const message: IncomingMessage = JSON.parse(event.data);
+            if (message.type === "signal") {
+              void this.handleSignal(message as SignalMessage);
+            } else {
+              this.handleState(message as StateMessage);
+            }
+          } catch (err) {
+            this.emit("error", err as Error);
           }
-        } catch (err) {
-          this.emit("error", err as Error);
-        }
-      };
+        };
+      } catch (err) {
+        this.emit("status", "Missing signaling URL");
+        this.emit("error", err as Error);
+      }
     })();
   }
 
@@ -259,14 +225,7 @@ export class WebRTCClient {
 
   private async resolveWsURL(): Promise<string> {
     if (this.wsURL) return this.wsURL;
-    const settings = await fetchSettings();
-    if (settings?.wsURL) {
-      this.wsURL = settings.wsURL;
-      return this.wsURL;
-    }
-    const fallback = defaultWsURL();
-    this.wsURL = fallback;
-    return fallback;
+    throw new Error("WebRTCClient wsURL is required (pass wsURL in WebRTCClientOptions)");
   }
 
   private getOrCreateConnection(id: string) {
